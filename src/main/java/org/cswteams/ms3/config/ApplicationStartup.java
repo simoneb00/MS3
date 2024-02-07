@@ -729,8 +729,8 @@ public class ApplicationStartup implements ApplicationListener<ApplicationReadyE
         allDaysOfWeek.add(DayOfWeek.SATURDAY);
         allDaysOfWeek.add(DayOfWeek.SUNDAY);
 
-        Shift shift1 = new Shift(LocalTime.of(14, 0),
-                Duration.ofHours(8),
+        Shift shift1 = new Shift(LocalTime.of(18, 0),
+                Duration.ofHours(5),
                 ambulatorioCardiologia,
                 TimeSlot.AFTERNOON,
                 quantityShiftSeniorityList1,

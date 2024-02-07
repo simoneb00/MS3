@@ -45,4 +45,5 @@ public interface ISchedulerController {
     boolean removeConcreteShift(Long idAssegnazione);
 
     Schedule addConcreteShift(RegisterConcreteShiftDTO assegnazione, boolean forced) throws AssegnazioneTurnoException, IllegalScheduleException;
+    Schedule readMostRecentSchedule();
 }

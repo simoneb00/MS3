@@ -1,11 +1,22 @@
 package org.cswteams.ms3.control.scocciatura;
 
+import org.cswteams.ms3.control.scheduler.ISchedulerController;
+import org.cswteams.ms3.control.scheduler.SchedulerController;
+import org.cswteams.ms3.dao.DoctorUffaPriorityDAO;
+import org.cswteams.ms3.dao.ScocciaturaDAO;
+import org.cswteams.ms3.dto.ScheduleDTO;
 import org.cswteams.ms3.entity.ConcreteShift;
+import org.cswteams.ms3.entity.DoctorAssignment;
 import org.cswteams.ms3.entity.DoctorUffaPriority;
+import org.cswteams.ms3.entity.Schedule;
 import org.cswteams.ms3.entity.scocciature.ContestoScocciatura;
 import org.cswteams.ms3.entity.scocciature.Scocciatura;
 import org.cswteams.ms3.enums.PriorityQueueEnum;
+import org.cswteams.ms3.enums.TimeSlot;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -15,11 +26,19 @@ import java.util.*;
 /**
  * This class manages all the aspects concerning the uffa prioriy levels.
  */
-public class ControllerScocciatura {
+@Service
+public class ControllerScocciatura implements IControllerScocciatura{
 
     public List<Scocciatura> scocciature;   //why public!?
     private final int upperBound;
     private final int lowerBound;
+
+    @Autowired
+    private ISchedulerController schedulerController;
+    @Autowired
+    private DoctorUffaPriorityDAO doctorUffaPriorityDAO;
+    @Autowired
+    private ScocciaturaDAO scocciaturaDAO;
 
 
     public ControllerScocciatura(List<Scocciatura> scocciature) {
@@ -41,6 +60,26 @@ public class ControllerScocciatura {
 
     }
 
+    public ControllerScocciatura() {
+        try {
+            File file = new File("src/main/resources/priority.properties");
+            FileInputStream propsInput = new FileInputStream(file);
+            Properties prop = new Properties();
+            prop.load(propsInput);
+
+            this.upperBound = Math.max(Integer.parseInt(prop.getProperty("upperBound")), 0);    //we cannot set upperBound < 0
+            this.lowerBound = Math.min(Integer.parseInt(prop.getProperty("lowerBound")), 0);    //we cannot set lowerBound > 0
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @PostConstruct
+    public void populateScocciature() {
+        List<Scocciatura> scocciaturaList = scocciaturaDAO.findAll();
+        this.scocciature = scocciaturaList;
+    }
 
     /**
      * This method calculates the variation of priority level for a doctor assigned to a specific concrete shift.
@@ -59,6 +98,81 @@ public class ControllerScocciatura {
             dup.updatePartialPriority(priorityDelta, pq, this.upperBound, this.lowerBound);
 
         }
+
+    }
+
+    public void updateDoctorPriorityByValue(DoctorUffaPriority doctorUffaPriority, int priorityDelta, PriorityQueueEnum pq) {
+
+        System.out.println("Updating " + doctorUffaPriority.getDoctor().getName() + " " +
+                doctorUffaPriority.getDoctor().getLastname() + " priority by value " + priorityDelta +
+                ", in queue " + pq.name()
+                );
+
+        doctorUffaPriority.updatePartialPriority(priorityDelta, pq, this.upperBound, this.lowerBound);
+    }
+
+    /**
+     * This method updates the priorities after a shift exchange: the substitute doctor receives the same priority the retiring doctor had received, for the specific concrete shift.
+     * @param retiringDoctorPriority Priority of the retiring doctor
+     * @param substituteDoctorPriority Priority of the substitute doctor
+     * @param concreteShift Concrete shift for which the exchange takes place
+     */
+    public void updateDoctorPrioritiesAfterShiftExchange(DoctorUffaPriority retiringDoctorPriority, DoctorUffaPriority substituteDoctorPriority, ConcreteShift concreteShift) {
+        ContestoScocciatura contestoScocciatura = new ContestoScocciatura(substituteDoctorPriority, concreteShift);
+        int priorityDeltaSubstitute = this.calcolaUffaComplessivoUtenteAssegnazione(contestoScocciatura);
+
+        System.out.println(this.scocciature);
+
+        /* Now, we need to determine if the requesting user is assigned to a long shift, in the day we're considering */
+        Schedule mostRecentSchedule = schedulerController.readMostRecentSchedule();
+
+        for (ConcreteShift cShift : mostRecentSchedule.getConcreteShifts()) {
+            if (cShift.getDate() == concreteShift.getDate() &&
+                    ((cShift.getShift().getTimeSlot() == TimeSlot.MORNING && concreteShift.getShift().getTimeSlot() == TimeSlot.AFTERNOON) ||
+                    (cShift.getShift().getTimeSlot() == TimeSlot.AFTERNOON && concreteShift.getShift().getTimeSlot() == TimeSlot.MORNING))
+            ) {
+                for (DoctorAssignment doctorAssignment : cShift.getDoctorAssignmentList()) {
+                    if (doctorAssignment.getDoctor() == retiringDoctorPriority.getDoctor()) {
+                        /* The retiring doctor is assigned to a long shift */
+                        ContestoScocciatura cs = new ContestoScocciatura(retiringDoctorPriority, cShift);
+                        int pDelta = - this.calcolaUffaComplessivoUtenteAssegnazione(cs);
+
+                        this.updateDoctorPriorityByValue(retiringDoctorPriority, pDelta, PriorityQueueEnum.LONG_SHIFT);
+                        retiringDoctorPriority.updatePriority(PriorityQueueEnum.LONG_SHIFT);
+
+                        this.updateDoctorPriorityByValue(retiringDoctorPriority, pDelta, PriorityQueueEnum.GENERAL);
+                        retiringDoctorPriority.updatePriority(PriorityQueueEnum.GENERAL);
+
+                        this.updateDoctorPriorityByValue(substituteDoctorPriority, priorityDeltaSubstitute, PriorityQueueEnum.GENERAL);
+                        substituteDoctorPriority.updatePriority(PriorityQueueEnum.GENERAL);
+
+                        doctorUffaPriorityDAO.saveAndFlush(retiringDoctorPriority);
+                        doctorUffaPriorityDAO.saveAndFlush(substituteDoctorPriority);
+
+                        return;
+                    }
+                }
+
+            }
+        }
+
+        /* normal shift */
+        ContestoScocciatura cs = new ContestoScocciatura(retiringDoctorPriority, concreteShift);
+        int priorityDeltaRequesting = this.calcolaUffaComplessivoUtenteAssegnazione(cs);
+
+        if (concreteShift.getShift().getTimeSlot() == TimeSlot.NIGHT) {
+            this.updateDoctorPriorityByValue(retiringDoctorPriority, -priorityDeltaRequesting, PriorityQueueEnum.NIGHT);
+            retiringDoctorPriority.updatePriority(PriorityQueueEnum.NIGHT);
+
+            this.updateDoctorPriorityByValue(substituteDoctorPriority, priorityDeltaSubstitute, PriorityQueueEnum.NIGHT);
+            substituteDoctorPriority.updatePriority(PriorityQueueEnum.NIGHT);
+        }
+
+        this.updateDoctorPriorityByValue(retiringDoctorPriority, -priorityDeltaRequesting, PriorityQueueEnum.GENERAL);
+        retiringDoctorPriority.updatePriority(PriorityQueueEnum.GENERAL);
+
+        this.updateDoctorPriorityByValue(substituteDoctorPriority, priorityDeltaSubstitute, PriorityQueueEnum.GENERAL);
+        substituteDoctorPriority.updatePriority(PriorityQueueEnum.GENERAL);
 
     }
 

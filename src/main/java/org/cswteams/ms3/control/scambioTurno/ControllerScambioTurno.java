@@ -1,6 +1,8 @@
 package org.cswteams.ms3.control.scambioTurno;
 
+import com.fasterxml.jackson.databind.annotation.JsonAppend;
 import org.cswteams.ms3.control.notification.INotificationSystemController;
+import org.cswteams.ms3.control.scocciatura.IControllerScocciatura;
 import org.cswteams.ms3.dao.*;
 import org.cswteams.ms3.dto.AnswerTurnChangeRequestDTO;
 import org.cswteams.ms3.dto.RequestTurnChangeDto;
@@ -12,6 +14,7 @@ import org.cswteams.ms3.entity.constraint.ConstraintHoliday;
 import org.cswteams.ms3.entity.constraint.ConstraintMaxPeriodoConsecutivo;
 import org.cswteams.ms3.entity.constraint.ConstraintUbiquita;
 import org.cswteams.ms3.entity.constraint.ContextConstraint;
+import org.cswteams.ms3.entity.scocciature.Scocciatura;
 import org.cswteams.ms3.enums.ConcreteShiftDoctorStatus;
 import org.cswteams.ms3.enums.RequestStatus;
 import org.cswteams.ms3.enums.Seniority;
@@ -58,6 +61,12 @@ public class ControllerScambioTurno implements IControllerScambioTurno {
 
     @Autowired
     private HolidayDAO holidayDAO;
+
+    @Autowired
+    private ScocciaturaDAO scocciaturaDAO;
+
+    @Autowired
+    private IControllerScocciatura controllerScocciatura;
 
     /**
      * Questo metodo crea una richiesta di modifica turno.
@@ -253,6 +262,11 @@ public class ControllerScambioTurno implements IControllerScambioTurno {
                     break;
                 }
             }
+
+            DoctorUffaPriority senderUffaPriority = doctorUffaPriorityDAO.findByDoctor_Id(request.getSender().getId()).get(0);
+            DoctorUffaPriority receiverUffaPriority = doctorUffaPriorityDAO.findByDoctor_Id(request.getReceiver().getId()).get(0);
+            controllerScocciatura.updateDoctorPrioritiesAfterShiftExchange(senderUffaPriority, receiverUffaPriority, shift);
+
 
         }else{
 

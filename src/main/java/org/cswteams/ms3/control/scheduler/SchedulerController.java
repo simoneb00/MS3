@@ -148,7 +148,7 @@ public class SchedulerController implements ISchedulerController {
             scheduleDAO.save(schedule);
             for(DoctorUffaPriority dup: schedule.getDoctorUffaPriorityList()) {
                 dup.setSchedule(schedule);
-                doctorUffaPriorityDAO.save(dup);
+                doctorUffaPriorityDAO.saveAndFlush(dup);
             }
 
             return schedule;
@@ -411,6 +411,26 @@ public class SchedulerController implements ISchedulerController {
     public List<ScheduleDTO> readSchedules(){
         return scheduleEntitytoDTO(scheduleDAO.findAll());
     }
+
+
+    /**
+     * This method retrieves the most recent schedule from the database.
+     * @return Most recent schedule
+     */
+    public Schedule readMostRecentSchedule() {
+        Schedule mostRecentSchedule = null;
+        long startDate = 0L;
+        List<Schedule> allSchedules = scheduleDAO.findAll();
+        for (Schedule schedule : allSchedules) {
+            if (schedule.getStartDate() > startDate) {
+                mostRecentSchedule = schedule;
+                startDate = schedule.getStartDate();
+            }
+        }
+
+        return mostRecentSchedule;
+    }
+
 
     /**
      * This method retrieves the illegal schedules from the database.

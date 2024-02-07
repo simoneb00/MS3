@@ -3,7 +3,7 @@ package org.cswteams.ms3.control.scheduler;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.cswteams.ms3.control.scocciatura.ControllerScocciatura;
+import org.cswteams.ms3.control.scocciatura.IControllerScocciatura;
 import org.cswteams.ms3.control.utils.DoctorAssignmentUtil;
 import org.cswteams.ms3.entity.*;
 import org.cswteams.ms3.entity.constraint.Constraint;
@@ -47,7 +47,7 @@ public class ScheduleBuilder {
     private List<DoctorUffaPriority> allDoctorUffaPriority;
 
     /** Instance of controllerScocciatura */
-    private ControllerScocciatura controllerScocciatura;
+    private IControllerScocciatura controllerScocciatura;
 
 
     /**
